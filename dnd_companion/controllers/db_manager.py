@@ -70,6 +70,16 @@ def inicializar_banco():
         )
     """)
 
+    cursor.execute("PRAGMA table_info(item)")
+    colunas = [c[1] for c in cursor.fetchall()]
+    if "bonus_ataque" not in colunas:
+        cursor.execute("ALTER TABLE item ADD COLUMN bonus_ataque INTEGER DEFAULT 0")
+    if "bonus_dano" not in colunas:
+        cursor.execute("ALTER TABLE item ADD COLUMN bonus_dano INTEGER DEFAULT 0")
+    if "efeito_especial" not in colunas:
+        cursor.execute("ALTER TABLE item ADD COLUMN efeito_especial TEXT DEFAULT ''")
+
+
     # Se ainda não existirem, insere a lista padrão
     cursor.execute("SELECT COUNT(*) FROM pericia")
     if cursor.fetchone()[0] == 0:
@@ -95,17 +105,6 @@ def inicializar_banco():
         ]
         for nome, atributo in lista_pericias:
             cursor.execute("INSERT INTO pericia (personagem_id, nome, atributo_base) VALUES (1, ?, ?)", (nome, atributo))
-
-    # Acrescenta novos campos se não existirem
-    cursor.execute("PRAGMA table_info(item)")
-    colunas = [c[1] for c in cursor.fetchall()]
-
-    if "bonus_ataque" not in colunas:
-        cursor.execute("ALTER TABLE item ADD COLUMN bonus_ataque INTEGER DEFAULT 0")
-    if "bonus_dano" not in colunas:
-        cursor.execute("ALTER TABLE item ADD COLUMN bonus_dano INTEGER DEFAULT 0")
-    if "efeito_especial" not in colunas:
-        cursor.execute("ALTER TABLE item ADD COLUMN efeito_especial TEXT DEFAULT ''")
 
     # Garante uma linha default (id=1) se ainda não existir
     cursor.execute("SELECT COUNT(*) FROM personagem WHERE id = 1")

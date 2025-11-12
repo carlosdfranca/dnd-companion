@@ -15,27 +15,33 @@ class RollResult:
 def modificador(atributo: int) -> int:
     return (atributo - 10) // 2
 
-def roll(expression: str, context: dict, manual_value: int | None = None, advantage: str = "normal") -> RollResult:
+def roll(expression: str, context: dict, manual_value: int | None = None,
+         advantage: str = "normal", bonus_ataque: int = 0, bonus_dano: int = 0) -> RollResult:
     """
-    Interpreta e executa uma expressão de rolagem (ex: '1d20 + FOR + PROF + 2')
+    Rola expressões tipo 'd20 + FOR + PROF' ou '1d12 + FOR'.
+    Regra: se tiver d20 (maiúsculo ou minúsculo) -> aplica bônus de ATAQUE;
+    senão -> aplica bônus de DANO.
     """
-    tokens = re.findall(r"(\d*d\d+|[A-Z]+|\+?-?\d+)", expression.replace(" ", ""))
+    expr_clean = expression.replace(" ", "")
+    expr_lower = expr_clean.lower()
+    tokens = re.findall(r"(\d*d\d+|[A-Z]+|\+?-?\d+)", expr_clean)
+
+    is_attack = "d20" in expr_lower  # agora é case-insensitive
     total = 0
     detalhes = []
     valores = []
     critico = False
 
     for token in tokens:
-        if "d" in token:  # rolagem de dado
-            qtd, faces = token.split("d")
-            qtd = int(qtd) if qtd else 1
-            faces = int(faces)
+        if "d" in token.lower():
+            qtd_s, faces_s = token.lower().split("d")
+            qtd = int(qtd_s) if qtd_s else 1
+            faces = int(faces_s)
 
-            # vantagem/desvantagem só vale para d20 único
             if faces == 20 and qtd == 1 and advantage in ["advantage", "disadvantage"]:
                 r1, r2 = (random.randint(1, 20), random.randint(1, 20)) if manual_value is None else (manual_value, manual_value)
                 escolhido = max(r1, r2) if advantage == "advantage" else min(r1, r2)
-                detalhes.append(f"d20({r1},{r2}) → {advantage} → usou {escolhido}")
+                detalhes.append(f"d20({r1},{r2}) → {advantage} → {escolhido}")
                 valores.append(("d20", [r1, r2]))
                 total += escolhido
                 if escolhido == 20:
@@ -59,6 +65,14 @@ def roll(expression: str, context: dict, manual_value: int | None = None, advant
                 total += num
                 detalhes.append(f"{num:+d}")
             except ValueError:
-                pass  # ignora tokens inválidos
+                pass
+
+    # aplica bônus do item conforme tipo
+    if is_attack and bonus_ataque:
+        total += bonus_ataque
+        detalhes.append(f"Item(+{bonus_ataque} ATAQUE)")
+    elif not is_attack and bonus_dano:
+        total += bonus_dano
+        detalhes.append(f"Item(+{bonus_dano} DANO)")
 
     return RollResult(total, " + ".join(detalhes), valores, critico)

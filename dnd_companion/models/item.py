@@ -1,134 +1,187 @@
 # models/item.py
-import sqlite3
-from dataclasses import dataclass
+from controllers.db_manager import conectar
 
-@dataclass
 class Item:
-    id: int
-    personagem_id: int
-    nome: str
-    descricao: str
-    bonus_atributo: str  # "FOR", "DES", "CON", "INT", "SAB", "CAR" ou ""
-    valor_bonus: int
-    bonus_ca: int
-    equipado: bool
-    bonus_ataque: int = 0
-    bonus_dano: int = 0
-    efeito_especial: str = ""
+    def __init__(
+        self,
+        id=None,
+        personagem_id=1,
+        nome="",
+        descricao="",
+        bonus_atributo="",
+        valor_bonus=0,
+        bonus_ca=0,
+        bonus_ataque=0,
+        bonus_dano=0,
+        efeito_especial="",
+        equipado=False,
+    ):
+        self.id = id
+        self.personagem_id = personagem_id
+        self.nome = nome
+        self.descricao = descricao
+        self.bonus_atributo = bonus_atributo
+        self.valor_bonus = valor_bonus
+        self.bonus_ca = bonus_ca
+        self.bonus_ataque = bonus_ataque
+        self.bonus_dano = bonus_dano
+        self.efeito_especial = efeito_especial
+        self.equipado = bool(equipado)
 
-    # ===============================
-    # 🧾 Listar todos os itens do personagem
-    # ===============================
+    # ============================
+    # 🔹 CRUD BÁSICO
+    # ============================
+
+    def salvar(self, conn=None):
+        """Insere ou atualiza o item no banco."""
+        fechar = False
+        if conn is None:
+            conn = conectar()
+            fechar = True
+        cursor = conn.cursor()
+
+        if self.id is None:
+            cursor.execute(
+                """
+                INSERT INTO item (
+                    personagem_id, nome, descricao,
+                    bonus_atributo, valor_bonus, bonus_ca,
+                    bonus_ataque, bonus_dano, efeito_especial, equipado
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self.personagem_id,
+                    self.nome,
+                    self.descricao,
+                    self.bonus_atributo,
+                    self.valor_bonus,
+                    self.bonus_ca,
+                    self.bonus_ataque,
+                    self.bonus_dano,
+                    self.efeito_especial,
+                    int(self.equipado),
+                ),
+            )
+            self.id = cursor.lastrowid
+        else:
+            cursor.execute(
+                """
+                UPDATE item SET
+                    personagem_id=?,
+                    nome=?,
+                    descricao=?,
+                    bonus_atributo=?,
+                    valor_bonus=?,
+                    bonus_ca=?,
+                    bonus_ataque=?,
+                    bonus_dano=?,
+                    efeito_especial=?,
+                    equipado=?
+                WHERE id=?
+                """,
+                (
+                    self.personagem_id,
+                    self.nome,
+                    self.descricao,
+                    self.bonus_atributo,
+                    self.valor_bonus,
+                    self.bonus_ca,
+                    self.bonus_ataque,
+                    self.bonus_dano,
+                    self.efeito_especial,
+                    int(self.equipado),
+                    self.id,
+                ),
+            )
+
+        conn.commit()
+        if fechar:
+            conn.close()
+
+    def deletar(self, conn=None):
+        fechar = False
+        if conn is None:
+            conn = conectar()
+            fechar = True
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM item WHERE id=?", (self.id,))
+        conn.commit()
+        if fechar:
+            conn.close()
+
+    # ============================
+    # 🔹 CONSULTAS
+    # ============================
+
     @staticmethod
-    def listar(conn: sqlite3.Connection, personagem_id=1):
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, personagem_id, nome, descricao, bonus_atributo, valor_bonus,
-                   bonus_ca, equipado, bonus_ataque, bonus_dano, efeito_especial
+    def listar(conn=None):
+        fechar = False
+        if conn is None:
+            conn = conectar()
+            fechar = True
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, personagem_id, nome, descricao,
+                   bonus_atributo, valor_bonus, bonus_ca,
+                   bonus_ataque, bonus_dano, efeito_especial, equipado
             FROM item
-            WHERE personagem_id=?
-            ORDER BY id DESC
-        """, (personagem_id,))
-        items = []
-        for row in cur.fetchall():
-            items.append(Item(
-                id=row[0],
-                personagem_id=row[1],
-                nome=row[2] or "",
-                descricao=row[3] or "",
-                bonus_atributo=(row[4] or "").upper(),
-                valor_bonus=int(row[5] or 0),
-                bonus_ca=int(row[6] or 0),
-                equipado=bool(row[7]),
-                bonus_ataque=int(row[8] or 0),
-                bonus_dano=int(row[9] or 0),
-                efeito_especial=row[10] or ""
-            ))
+            ORDER BY nome
+            """
+        )
+        rows = cursor.fetchall()
+        items = [
+            Item(
+                id=r[0],
+                personagem_id=r[1],
+                nome=r[2],
+                descricao=r[3],
+                bonus_atributo=r[4],
+                valor_bonus=r[5],
+                bonus_ca=r[6],
+                bonus_ataque=r[7],
+                bonus_dano=r[8],
+                efeito_especial=r[9],
+                equipado=bool(r[10]),
+            )
+            for r in rows
+        ]
+        if fechar:
+            conn.close()
         return items
 
-    # ===============================
-    # 🔍 Obter item específico
-    # ===============================
     @staticmethod
-    def obter(conn: sqlite3.Connection, item_id: int):
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, personagem_id, nome, descricao, bonus_atributo, valor_bonus,
-                   bonus_ca, equipado, bonus_ataque, bonus_dano, efeito_especial
-            FROM item WHERE id=?
-        """, (item_id,))
-        row = cur.fetchone()
-        if not row:
-            return None
-        return Item(
-            id=row[0],
-            personagem_id=row[1],
-            nome=row[2] or "",
-            descricao=row[3] or "",
-            bonus_atributo=(row[4] or "").upper(),
-            valor_bonus=int(row[5] or 0),
-            bonus_ca=int(row[6] or 0),
-            equipado=bool(row[7]),
-            bonus_ataque=int(row[8] or 0),
-            bonus_dano=int(row[9] or 0),
-            efeito_especial=row[10] or ""
+    def buscar_por_id(item_id, conn=None):
+        fechar = False
+        if conn is None:
+            conn = conectar()
+            fechar = True
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, personagem_id, nome, descricao,
+                   bonus_atributo, valor_bonus, bonus_ca,
+                   bonus_ataque, bonus_dano, efeito_especial, equipado
+            FROM item
+            WHERE id=?
+            """,
+            (item_id,),
         )
-
-    # ===============================
-    # 💾 Inserir novo item
-    # ===============================
-    def inserir(self, conn: sqlite3.Connection):
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO item (
-                personagem_id, nome, descricao, bonus_atributo, valor_bonus,
-                bonus_ca, equipado, bonus_ataque, bonus_dano, efeito_especial
+        row = cursor.fetchone()
+        if fechar:
+            conn.close()
+        if row:
+            return Item(
+                id=row[0],
+                personagem_id=row[1],
+                nome=row[2],
+                descricao=row[3],
+                bonus_atributo=row[4],
+                valor_bonus=row[5],
+                bonus_ca=row[6],
+                bonus_ataque=row[7],
+                bonus_dano=row[8],
+                efeito_especial=row[9],
+                equipado=bool(row[10]),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            self.personagem_id, self.nome, self.descricao, self.bonus_atributo,
-            self.valor_bonus, self.bonus_ca, int(self.equipado),
-            self.bonus_ataque, self.bonus_dano, self.efeito_especial
-        ))
-        conn.commit()
-        self.id = cur.lastrowid
-        return self.id
-
-    # ===============================
-    # 🔄 Atualizar item existente
-    # ===============================
-    def atualizar(self, conn: sqlite3.Connection):
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE item
-            SET nome=?, descricao=?, bonus_atributo=?, valor_bonus=?, bonus_ca=?,
-                equipado=?, bonus_ataque=?, bonus_dano=?, efeito_especial=?
-            WHERE id=?
-        """, (
-            self.nome, self.descricao, self.bonus_atributo, self.valor_bonus,
-            self.bonus_ca, int(self.equipado), self.bonus_ataque,
-            self.bonus_dano, self.efeito_especial, self.id
-        ))
-        conn.commit()
-
-    # ===============================
-    # ❌ Deletar item
-    # ===============================
-    @staticmethod
-    def deletar(conn: sqlite3.Connection, item_id: int):
-        cur = conn.cursor()
-        cur.execute("DELETE FROM item WHERE id=?", (item_id,))
-        conn.commit()
-
-    # ===============================
-    # ⚔️ Alternar equipado/desarmado
-    # ===============================
-    @staticmethod
-    def alternar_equipado(conn: sqlite3.Connection, item_id: int):
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE item
-            SET equipado = CASE WHEN equipado = 1 THEN 0 ELSE 1 END
-            WHERE id=?
-        """, (item_id,))
-        conn.commit()
+        return None

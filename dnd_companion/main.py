@@ -355,8 +355,16 @@ class RollScreen(Screen):
         self.add_widget(self.layout)
 
         self.layout.add_widget(Label(text="🎲 Teste de Rolagem", font_size="20sp", bold=True))
-        self.expression = TextInput(hint_text="Ex: d20 + FOR + PROF", multiline=False, size_hint=(1, 0.1))
+
+        self.expression = TextInput(hint_text="Ex: d20 + FOR + PROF  (ataque)  |  1d12 + FOR  (dano)", multiline=False, size_hint=(1, 0.1))
         self.layout.add_widget(self.expression)
+
+        # seleção de item (aplica bônus conforme tipo de rolagem)
+        self.item_spinner = Spinner(text="(sem item)", values=(), size_hint=(1, 0.1))
+        self.layout.add_widget(self.item_spinner)
+        self._equipados_cache = []   # lista de Item
+        self._equipados_ids = []     # lista de IDs na mesma ordem do spinner (além do primeiro "(sem item)")
+
         self.manual = TextInput(hint_text="Valor manual (opcional)", multiline=False, input_filter="int", size_hint=(1, 0.1))
         self.layout.add_widget(self.manual)
 
@@ -366,17 +374,46 @@ class RollScreen(Screen):
         botoes.add_widget(Button(text="Desvantagem", on_press=lambda _: self.executar("disadvantage")))
         self.layout.add_widget(botoes)
 
-        self.resultado = Label(text="", font_size="16sp", size_hint=(1, 0.5))
+        self.resultado = Label(text="", font_size="16sp", size_hint=(1, 0.45))
         self.layout.add_widget(self.resultado)
+
+        self.efeito_label = Label(text="", font_size="14sp", size_hint=(1, 0.05))
+        self.layout.add_widget(self.efeito_label)
 
         btn_voltar = Button(text="⬅ Voltar", size_hint=(1, 0.1))
         btn_voltar.bind(on_press=self.voltar)
         self.layout.add_widget(btn_voltar)
 
+    def on_pre_enter(self):
+        # carrega itens equipados e popula spinner por ID
+        conn = conectar()
+        items = Item.listar(conn)
+        conn.close()
+        equipados = [i for i in items if i.equipado]
+
+        self._equipados_cache = equipados
+        self._equipados_ids = [i.id for i in equipados]
+
+        nomes = ["(sem item)"] + [f"{i.nome}" for i in equipados]
+        self.item_spinner.values = nomes
+        self.item_spinner.text = "(sem item)"
+
+    def _get_selected_item(self):
+        # índice do spinner: 0 = (sem item); >=1 corresponde a self._equipados_cache
+        selected_name = self.item_spinner.text
+        if selected_name == "(sem item)":
+            return None
+        # mapeia por posição para evitar colisão de nomes
+        idx = list(self.item_spinner.values).index(selected_name) - 1
+        if idx < 0 or idx >= len(self._equipados_cache):
+            return None
+        return self._equipados_cache[idx]
+
     def executar(self, modo):
         conn = conectar()
         personagem = Personagem.carregar(conn)
         conn.close()
+
         context = {
             "FOR": (personagem.forca - 10) // 2,
             "DES": (personagem.destreza - 10) // 2,
@@ -387,14 +424,22 @@ class RollScreen(Screen):
             "PROF": 3  # fixo por enquanto
         }
 
-        manual_val = _to_int(self.manual.text, None)
-        expr = self.expression.text.strip() or "d20"
+        manual_val = int(self.manual.text) if self.manual.text else None
+        expr = (self.expression.text or "").strip() or "d20"
 
-        resultado = roll(expr, context, manual_val, modo)
+        item = self._get_selected_item()
+        bonus_ataque = item.bonus_ataque if item else 0
+        bonus_dano = item.bonus_dano if item else 0
+        efeito = item.efeito_especial if item else ""
+
+        resultado = roll(expr, context, manual_val, modo,
+                         bonus_ataque=bonus_ataque, bonus_dano=bonus_dano)
+
         texto = f"{resultado.detalhes}\n\nTOTAL: {resultado.total}"
         if resultado.critico:
             texto += "\n💥 CRÍTICO!"
         self.resultado.text = texto
+        self.efeito_label.text = f"Efeito: {efeito}" if efeito else ""
 
     def voltar(self, *_):
         self.manager.transition = SlideTransition(direction="right")
